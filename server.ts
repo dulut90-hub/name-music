@@ -163,8 +163,13 @@ async function getDownloadSavetube(url: string) {
       }
     });
 
-    const { data: { cdn } } = await api.get("https://media.savetube.vip/api/random-cdn");
-    const { data: { data: encryptedData } } = await api.post(`https://${cdn}/v2/info`, { url });
+    const randomCdnRes = await api.get("https://media.savetube.vip/api/random-cdn");
+    const cdn = randomCdnRes.data?.cdn;
+    if (!cdn) return null;
+
+    const infoRes = await api.post(`https://${cdn}/v2/info`, { url });
+    const encryptedData = infoRes.data?.data;
+    if (!encryptedData) return null;
 
     const encrypted = Buffer.from(encryptedData, "base64");
     const decipher = crypto.createDecipheriv("aes-128-cbc",
@@ -179,14 +184,15 @@ async function getDownloadSavetube(url: string) {
       ]).toString()
     );
 
-    const { data: { data: { downloadUrl } } } = await api.post(`https://${cdn}/download`, {
-        id,
-        downloadType: "audio",
-        quality: "128",
-        key: decrypted.key
-      });
+    const downloadRes = await api.post(`https://${cdn}/download`, {
+      id,
+      downloadType: "audio",
+      quality: "128",
+      key: decrypted?.key
+    });
 
-    return downloadUrl;
+    const downloadUrl = downloadRes.data?.data?.downloadUrl;
+    return typeof downloadUrl === "string" && downloadUrl.length > 0 ? downloadUrl : null;
   } catch (err) {
     console.error("Savetube failed:", err);
     return null;
