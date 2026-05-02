@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Users ---
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
+    }
+
+    // --- Tracks ---
+    match /tracks/{trackId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (resource.data.uploaderId == request.auth.uid);
+    }
+
+    // --- Playlists ---
+    match /playlists/{playlistId} {
+      allow read: if resource.data.isPublic == true || isOwner(resource.data.ownerId) || (isSignedIn() && request.auth.uid in resource.data.collaborators);
+      allow create: if isSignedIn();
+      allow update: if isOwner(resource.data.ownerId) || (isSignedIn() && resource.data.collaborative == true && request.auth.uid in resource.data.collaborators);
+      allow delete: if isOwner(resource.data.ownerId);
+    }
+  }
+}

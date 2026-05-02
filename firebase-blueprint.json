@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and preferences.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "history": {
+          "type": "array",
+          "description": "List of track IDs recently played."
+        },
+        "likedSongs": {
+          "type": "array",
+          "description": "List of track IDs liked by the user."
+        }
+      },
+      "required": ["uid", "email"]
+    },
+    "Track": {
+      "title": "Track",
+      "description": "Metadata for a music track.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "thumbnail": { "type": "string" },
+        "duration": { "type": "string" },
+        "source": { "type": "string", "enum": ["youtube", "upload"] },
+        "url": { "type": "string" },
+        "audioUrl": { "type": "string", "description": "The actual streamable/downloadable audio link" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "uploaderId": { "type": "string" }
+      },
+      "required": ["id", "title", "artist"]
+    },
+    "Playlist": {
+      "title": "Playlist",
+      "description": "A collection of tracks.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "tracks": { "type": "array", "description": "List of track IDs" },
+        "isPublic": { "type": "boolean" },
+        "collaborative": { "type": "boolean" },
+        "collaborators": { "type": "array" }
+      },
+      "required": ["id", "name", "ownerId", "tracks"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User data"
+    },
+    "/tracks/{trackId}": {
+      "schema": "Track",
+      "description": "Global track metadata"
+    },
+    "/playlists/{playlistId}": {
+      "schema": "Playlist",
+      "description": "Music playlists"
+    }
+  }
+}
