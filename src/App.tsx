@@ -250,7 +250,7 @@ const translations = {
 
 const STORAGE_PREFIX = 'name-music';
 const storageKey = (key: string) => `${STORAGE_PREFIX}:${key}`;
-const SEARCH_ENDPOINTS = ['/api/search', 'https://api-faa.my.id/faa/youtube'];
+const SEARCH_ENDPOINTS = ['https://api-faa.my.id/faa/youtube'];
 
 async function fetchJsonSafe(url: string) {
   const res = await fetch(url);
@@ -576,13 +576,7 @@ function AppContent() {
                 </section>
 
                 
-                <section>
-                  <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-6">Music Platforms</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <a href="https://music.youtube.com" target="_blank" rel="noreferrer" className="p-5 rounded-2xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20">YouTube Music</a>
-                    <a href="https://open.spotify.com" target="_blank" rel="noreferrer" className="p-5 rounded-2xl bg-green-500/10 border border-green-500/20 hover:bg-green-500/20">Spotify</a>
-                  </div>
-                </section>
+                
 
                 <section>
                   <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-6">Top Music Picks</h2>
