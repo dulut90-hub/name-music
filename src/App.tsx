@@ -282,15 +282,20 @@ function normalizeTrack(item: any): Track | null {
 }
 
 async function searchTracks(query: string): Promise<Track[]> {
-  for (const base of SEARCH_ENDPOINTS) {
+  const enrichedQuery = query.toLowerCase().includes('name-music') ? query : `${query} name-music`;
+  const queryVariants = [query, enrichedQuery];
+
+  for (const q of queryVariants) {
+    for (const base of SEARCH_ENDPOINTS) {
     try {
       const glue = base.includes('?') ? '&' : '?';
-      const data = await fetchJsonSafe(`${base}${glue}q=${encodeURIComponent(query)}`);
+      const data = await fetchJsonSafe(`${base}${glue}q=${encodeURIComponent(q)}`);
       if (!data?.status || !Array.isArray(data.result)) continue;
       const normalized = data.result.map(normalizeTrack).filter(Boolean) as Track[];
       if (normalized.length > 0) return normalized;
     } catch (e) {
-      console.warn(`Search endpoint failed: ${base}`, e);
+      console.warn(`Search endpoint failed: ${base} (${q})`, e);
+    }
     }
   }
   return [];
