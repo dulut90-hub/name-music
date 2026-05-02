@@ -23,27 +23,108 @@ interface MusicContextType {
   toggleShuffle: () => void;
 }
 
+
+
+
+
+
+const API_BASE = (import.meta as any).env?.VITE_API_BASE?.replace(/\/$/, '') || '';
+const apiUrl = (path: string) => `${API_BASE}${path}`;
+const hasServerApi = !!API_BASE || ['localhost','127.0.0.1'].includes(window.location.hostname);
+
+
+function playBackgroundVideo(trackUrl: string) {
+  const videoId = trackUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
+  if (!videoId) return;
+
+  const existing = document.getElementById('name-music-bg-video');
+  if (existing) existing.remove();
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'name-music-bg-video';
+  wrapper.style.position = 'fixed';
+  wrapper.style.right = '12px';
+  wrapper.style.bottom = '96px';
+  wrapper.style.width = '220px';
+  wrapper.style.height = '124px';
+  wrapper.style.zIndex = '9999';
+  wrapper.style.borderRadius = '12px';
+  wrapper.style.overflow = 'hidden';
+  wrapper.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)';
+  wrapper.style.background = '#000';
+
+  const iframe = document.createElement('iframe');
+  iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&controls=0&loop=1&playlist=${videoId}`;
+  iframe.allow = 'autoplay; encrypted-media';
+  iframe.style.width = '100%';
+  iframe.style.height = '100%';
+  iframe.style.border = '0';
+
+  const controls = document.createElement('div');
+  controls.style.position = 'absolute';
+  controls.style.top = '6px';
+  controls.style.right = '6px';
+  controls.style.display = 'flex';
+  controls.style.gap = '6px';
+
+  const minBtn = document.createElement('button');
+  minBtn.textContent = '–';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  [minBtn, closeBtn].forEach((b) => {
+    b.style.background = 'rgba(0,0,0,0.65)';
+    b.style.color = '#fff';
+    b.style.border = '0';
+    b.style.borderRadius = '999px';
+    b.style.width = '24px';
+    b.style.height = '24px';
+    b.style.cursor = 'pointer';
+  });
+
+  let minimized = false;
+  minBtn.onclick = () => {
+    minimized = !minimized;
+    iframe.style.display = minimized ? 'none' : 'block';
+    wrapper.style.height = minimized ? '32px' : '124px';
+    wrapper.style.width = minimized ? '110px' : '220px';
+  };
+  closeBtn.onclick = () => wrapper.remove();
+
+  controls.appendChild(minBtn);
+  controls.appendChild(closeBtn);
+  wrapper.appendChild(iframe);
+  wrapper.appendChild(controls);
+  document.body.appendChild(wrapper);
+}
+
 const MusicContext = createContext<MusicContextType | undefined>(undefined);
 
 export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(() => {
-    return Number(localStorage.getItem('volume')) || 0.7;
+    return Number(localStorage.getItem('name-music:volume')) || 0.7;
   });
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [queue, setQueue] = useState<Track[]>([]);
   const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>(() => {
-    return (localStorage.getItem('repeatMode') as any) || 'none';
+    return (localStorage.getItem('name-music:repeatMode') as any) || 'none';
   });
   const [isShuffle, setIsShuffle] = useState(() => {
-    return localStorage.getItem('isShuffle') === 'true';
+    return localStorage.getItem('name-music:isShuffle') === 'true';
   });
   
   const howlRef = useRef<Howl | null>(null);
   const progressInterval = useRef<number | null>(null);
   const playRequestIdRef = useRef(0);
+  const [playCounts, setPlayCounts] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('name-music:playCounts') || '{}'); } catch { return {}; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('name-music:playCounts', JSON.stringify(playCounts));
+  }, [playCounts]);
 
   const cleanup = () => {
     if (howlRef.current) {
@@ -59,6 +140,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const requestId = ++playRequestIdRef.current;
     cleanup();
     setCurrentTrack(track);
+    setPlayCounts(prev => ({ ...prev, [track.id]: (prev[track.id] || 0) + 1 }));
     setIsPlaying(true);
     setProgress(0);
     setDuration(0);
@@ -89,31 +171,34 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // If no audioUrl and not offline, fetch from server extractor
       if (!finalUrl && track.url) {
         try {
-          const res = await fetch(`/api/play?url=${encodeURIComponent(track.url)}`);
-          if (!res.ok) {
-             const errData = await res.json().catch(() => ({}));
-             throw new Error(errData.error || "Server extraction failed");
+          if (!hasServerApi) {
+            throw new Error('Server API unavailable on this host');
           }
-          const data = await res.json();
-          if (data.status && data.result?.audio) {
-            finalUrl = data.result.audio;
-          } else {
-             throw new Error(data.error || "Extractor failed to provide stream");
+
+          const query = `${track.title} ${track.artist}`.trim();
+          const byQuery = await fetch(apiUrl(`/api/ytplay?q=${encodeURIComponent(query)}`));
+          if (byQuery.ok) {
+            const qData = await byQuery.json();
+            finalUrl = qData?.result?.download?.audio || null;
+          }
+
+          if (!finalUrl) {
+            const res = await fetch(apiUrl(`/api/play?url=${encodeURIComponent(track.url)}`));
+            if (res.ok) {
+              const data = await res.json();
+              if (data.status && data.result?.audio) {
+                finalUrl = data.result.audio;
+              }
+            }
+          }
+
+          if (!finalUrl) {
+            throw new Error('Server extraction failed');
           }
         } catch (fetchErr: any) {
           console.error("Audio fetch error:", fetchErr);
-          // Auto-skip to next track if one fails
           setIsPlaying(false);
-          const currentIndex = resolvedQueue.findIndex(t => t.id === track.id);
-          if (currentIndex !== -1 && currentIndex < resolvedQueue.length - 1) {
-             console.log("Auto-skipping to next track due to error...");
-             setTimeout(() => {
-                const nextT = resolvedQueue[currentIndex + 1];
-                playTrack(nextT, resolvedQueue);
-             }, 500);
-          } else {
-             alert(`Playback Error: ${fetchErr.message || "Failed to load audio"}`);
-          }
+          playBackgroundVideo(track.url);
           return;
         }
       }
@@ -215,8 +300,19 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else if (repeatMode === 'all') {
       playTrack(queue[0]);
     } else {
-      setIsPlaying(false);
-      setCurrentTrack(null);
+      const ranked = [...queue]
+        .filter(t => !currentTrack || t.id !== currentTrack.id)
+        .sort((a, b) => (playCounts[b.id] || 0) - (playCounts[a.id] || 0));
+
+      const sameArtist = ranked.find(t => currentTrack && t.artist === currentTrack.artist);
+      const recommended = sameArtist || ranked[0];
+
+      if (recommended) {
+        playTrack(recommended, queue);
+      } else {
+        setIsPlaying(false);
+        setCurrentTrack(null);
+      }
     }
   };
 
@@ -257,13 +353,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const toggleShuffle = () => setIsShuffle(prev => {
     const newVal = !prev;
-    localStorage.setItem('isShuffle', String(newVal));
+    localStorage.setItem('name-music:isShuffle', String(newVal));
     return newVal;
   });
 
   const handleSetRepeatMode = (mode: 'none' | 'all' | 'one') => {
     setRepeatMode(mode);
-    localStorage.setItem('repeatMode', mode);
+    localStorage.setItem('name-music:repeatMode', mode);
   };
 
   useEffect(() => {

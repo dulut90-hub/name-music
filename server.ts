@@ -230,6 +230,58 @@ async function ytdlRapid(url: string) {
   }
 }
 
+
+async function searchFirstVideo(query: string) {
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  const { data: html } = await axiosClient.get(url);
+  const data = extractJson(html, "ytInitialData");
+  if (!data) throw new Error("ytInitialData not found");
+
+  const sections = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+  let video: any = null;
+
+  for (const section of sections) {
+    const items = section?.itemSectionRenderer?.contents || [];
+    video = items.find((x: any) => x.videoRenderer)?.videoRenderer;
+    if (video) break;
+  }
+
+  if (!video) throw new Error("No video found");
+
+  return {
+    videoId: video.videoId,
+    title: safeText(video.title),
+    channel: safeText(video.ownerText) || safeText(video.longBylineText),
+    views: safeText(video.viewCountText) || safeText(video.shortViewCountText),
+    thumbnail: video.thumbnail?.thumbnails?.at(-1)?.url || `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`
+  };
+}
+
+app.get('/api/ytplay', async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ status: false, error: 'Query required' });
+  try {
+    const meta = await searchFirstVideo(q as string);
+    const watchUrl = `https://www.youtube.com/watch?v=${meta.videoId}`;
+    const saveAudio = await getDownloadSavetube(watchUrl);
+    const rapid = await ytdlRapid(watchUrl);
+    const audio = saveAudio || rapid || null;
+
+    return res.json({
+      status: true,
+      result: {
+        title: meta.title,
+        channel: meta.channel,
+        views: meta.views,
+        thumbnail: meta.thumbnail,
+        url: watchUrl,
+        download: { audio }
+      }
+    });
+  } catch (e: any) {
+    return res.status(500).json({ status: false, error: e.message || 'ytplay failed' });
+  }
+});
 app.get("/api/play", async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "URL required" });
@@ -250,102 +302,7 @@ app.get("/api/play", async (req, res) => {
     return res.json({ status: true, result: { audio: rapidUrl } });
   }
 
-  // Priority 3: List of extraction APIs (Public proxy scrapers)
-  const extractors = [
-    `https://api.vytub.com/info?url=${encodeURIComponent(url as string)}`,
-    `https://api.song.icu/stream?id=${videoId}`,
-    `https://pipedapi.kavin.rocks/streams/${videoId}`,
-    `https://pipedapi.recloudstream.com/streams/${videoId}`,
-    `https://pipedapi.darkness.services/streams/${videoId}`,
-    `https://pipedapi.piv.to/streams/${videoId}`,
-    `https://pipedapi.lunar.icu/streams/${videoId}`,
-    `https://pipedapi.mha.fi/streams/${videoId}`,
-    `https://pipedapi.qt.re/streams/${videoId}`,
-    `https://invidious.projectsegfau.lt/api/v1/videos/${videoId}`,
-    `https://invidious.nerdvpn.de/api/v1/videos/${videoId}`,
-    `https://iv.ggtyler.dev/api/v1/videos/${videoId}`,
-    `https://invidious.lunar.icu/api/v1/videos/${videoId}`,
-    `https://invidious.flokinet.to/api/v1/videos/${videoId}`,
-    `https://inv.tux.pizza/api/v1/videos/${videoId}`,
-    `https://invidious.backingthe.me/api/v1/videos/${videoId}`,
-    `https://api-faa.my.id/faa/youtube/play?url=${encodeURIComponent(url as string)}`,
-    `https://api.cobalt.tools/api/json`,
-    `https://yt.lemnoslife.com/videos?id=${videoId}&part=playback&stream=true`
-  ];
-
-  for (const apiUrl of extractors) {
-    try {
-      let streamUrl = null;
-      
-      if (apiUrl.includes("cobalt")) {
-        try {
-          const cobaltRes = await axios.post(apiUrl, {
-            url: `https://www.youtube.com/watch?v=${videoId}`,
-            audioFormat: "mp3",
-            downloadMode: "audio"
-          }, { 
-            headers: { 
-              "Accept": "application/json", 
-              "Content-Type": "application/json",
-              "User-Agent": "Mozilla/5.0"
-            },
-            timeout: 6000 
-          });
-          if (cobaltRes.data?.url) streamUrl = cobaltRes.data.url;
-          else if (cobaltRes.data?.status === "stream" && cobaltRes.data.url) streamUrl = cobaltRes.data.url;
-        } catch (e) { continue; }
-      } else if (apiUrl.includes("pipedapi") || apiUrl.includes("invidious") || apiUrl.includes("yewtu.be") || apiUrl.includes("ggtyler") || apiUrl.includes("sethforprivacy") || apiUrl.includes("nerdvpn") || apiUrl.includes("projectsegfau") || apiUrl.includes("piv.to") || apiUrl.includes("lunar.icu") || apiUrl.includes("berrytube") || apiUrl.includes("flokinet") || apiUrl.includes("tux.pizza") || apiUrl.includes("backingthe.me") || apiUrl.includes("mha.fi") || apiUrl.includes("qt.re")) {
-        const pipedRes = await axios.get(apiUrl, { timeout: 6000 });
-        const data = pipedRes.data;
-        // Check for audio streams first (Piped style)
-        streamUrl = data.audioStreams?.find((s: any) => s.bitrate > 0)?.url 
-                 || data.audioStreams?.[0]?.url;
-
-        // If not found, check Invidious style
-        if (!streamUrl && data.adaptiveFormats) {
-           streamUrl = data.adaptiveFormats?.find((f: any) => f.type?.includes("audio") || f.mimeType?.includes("audio"))?.url
-                    || data.adaptiveFormats?.find((f: any) => f.container === "m4a")?.url;
-        }
-
-        // Final fallbacks for both
-        if (!streamUrl) {
-           streamUrl = data.formatStreams?.[0]?.url 
-                    || data.formatStreams?.find((s: any) => s.quality === "tiny")?.url
-                    || data.formatStreams?.find((s: any) => s.type?.includes("audio"))?.url;
-        }
-      } else {
-        const response = await axios.get(apiUrl, { timeout: 10000 });
-        const result = response.data;
-        
-        if (result.status && result.result?.audio) streamUrl = result.result.audio;
-        else if (result.formats?.find((f: any) => f.audioQuality || f.quality === "tiny" || f.type?.includes("audio"))) {
-           const format = result.formats.find((f: any) => f.audioQuality) 
-                       || result.formats.find((f: any) => f.type?.includes("audio"))
-                       || result.formats.find((f: any) => f.quality === "tiny");
-           streamUrl = format.url;
-        }
-        else if (result.audio_url) streamUrl = result.audio_url;
-        else if (result.link) streamUrl = result.link;
-        else if (result.stream) streamUrl = result.stream;
-      }
-
-      if (streamUrl) {
-        return res.json({ status: true, result: { audio: streamUrl } });
-      }
-    } catch (e) {
-      console.warn(`Extractor failed: ${apiUrl.split('/')[2]}`);
-    }
-  }
-
-  // Final desperate attempt: try another public API
-  try {
-     const res2 = await axios.get(`https://api.vytub.com/info?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`, { timeout: 5000 });
-     if (res2.data?.formats?.find((f: any) => f.url)) {
-        return res.json({ status: true, result: { audio: res2.data.formats.find((f: any) => f.url).url } });
-     }
-  } catch (e) {}
-
-  res.status(500).json({ error: "Source occupied. Please try another track or wait a moment." });
+  return res.status(500).json({ error: "Server extraction failed" });
 });
 
 async function startServer() {
