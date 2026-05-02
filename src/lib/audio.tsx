@@ -30,6 +30,7 @@ interface MusicContextType {
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE?.replace(/\/$/, '') || '';
 const apiUrl = (path: string) => `${API_BASE}${path}`;
+const hasServerApi = !!API_BASE || ['localhost','127.0.0.1'].includes(window.location.hostname);
 
 
 function playBackgroundVideo(trackUrl: string) {
@@ -42,10 +43,15 @@ function playBackgroundVideo(trackUrl: string) {
   const wrapper = document.createElement('div');
   wrapper.id = 'name-music-bg-video';
   wrapper.style.position = 'fixed';
-  wrapper.style.inset = '0';
-  wrapper.style.zIndex = '0';
-  wrapper.style.opacity = '0.12';
-  wrapper.style.pointerEvents = 'none';
+  wrapper.style.right = '12px';
+  wrapper.style.bottom = '96px';
+  wrapper.style.width = '220px';
+  wrapper.style.height = '124px';
+  wrapper.style.zIndex = '9999';
+  wrapper.style.borderRadius = '12px';
+  wrapper.style.overflow = 'hidden';
+  wrapper.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)';
+  wrapper.style.background = '#000';
 
   const iframe = document.createElement('iframe');
   iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&controls=0&loop=1&playlist=${videoId}`;
@@ -54,7 +60,40 @@ function playBackgroundVideo(trackUrl: string) {
   iframe.style.height = '100%';
   iframe.style.border = '0';
 
+  const controls = document.createElement('div');
+  controls.style.position = 'absolute';
+  controls.style.top = '6px';
+  controls.style.right = '6px';
+  controls.style.display = 'flex';
+  controls.style.gap = '6px';
+
+  const minBtn = document.createElement('button');
+  minBtn.textContent = '–';
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  [minBtn, closeBtn].forEach((b) => {
+    b.style.background = 'rgba(0,0,0,0.65)';
+    b.style.color = '#fff';
+    b.style.border = '0';
+    b.style.borderRadius = '999px';
+    b.style.width = '24px';
+    b.style.height = '24px';
+    b.style.cursor = 'pointer';
+  });
+
+  let minimized = false;
+  minBtn.onclick = () => {
+    minimized = !minimized;
+    iframe.style.display = minimized ? 'none' : 'block';
+    wrapper.style.height = minimized ? '32px' : '124px';
+    wrapper.style.width = minimized ? '110px' : '220px';
+  };
+  closeBtn.onclick = () => wrapper.remove();
+
+  controls.appendChild(minBtn);
+  controls.appendChild(closeBtn);
   wrapper.appendChild(iframe);
+  wrapper.appendChild(controls);
   document.body.appendChild(wrapper);
 }
 
@@ -132,6 +171,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // If no audioUrl and not offline, fetch from server extractor
       if (!finalUrl && track.url) {
         try {
+          if (!hasServerApi) {
+            throw new Error('Server API unavailable on this host');
+          }
+
           const query = `${track.title} ${track.artist}`.trim();
           const byQuery = await fetch(apiUrl(`/api/ytplay?q=${encodeURIComponent(query)}`));
           if (byQuery.ok) {
