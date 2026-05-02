@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search, 
   Home, 
@@ -247,6 +247,23 @@ const translations = {
   }
 };
 
+
+const STORAGE_PREFIX = 'name-music';
+const storageKey = (key: string) => `${STORAGE_PREFIX}:${key}`;
+
+async function fetchJsonSafe(url: string) {
+  const res = await fetch(url);
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 120)}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('Invalid JSON response from server');
+  }
+}
+
 const languages = [
   { code: 'en', name: 'English' },
   { code: 'id', name: 'Indonesian' },
@@ -276,7 +293,7 @@ function AppContent() {
   const [trending, setTrending] = useState<Track[]>([]);
   const [scrolled, setScrolled] = useState(false);
   const [lang, setLang] = useState<keyof typeof translations>(
-    (localStorage.getItem('lang') as keyof typeof translations) || 'en'
+    (localStorage.getItem(storageKey('lang')) as keyof typeof translations) || 'en'
   );
 
   useEffect(() => {
@@ -294,8 +311,7 @@ function AppContent() {
       const queries = ['trending music 2024', 'top hits global', 'popular songs 2025'];
       for (const query of queries) {
         try {
-          const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-          const data = await res.json();
+          const data = await fetchJsonSafe(`/api/search?q=${encodeURIComponent(query)}`);
           if (data.status && data.result.length > 0) {
             setTrending(data.result);
             return;
@@ -309,28 +325,36 @@ function AppContent() {
   }, []);
   
   const [likedSongs, setLikedSongs] = useState<Track[]>(() => {
-    return JSON.parse(localStorage.getItem('likedSongs') || '[]');
+    return JSON.parse(localStorage.getItem(storageKey('likedSongs')) || '[]');
   });
   
   const [history, setHistory] = useState<Track[]>(() => {
-    return JSON.parse(localStorage.getItem('history') || '[]');
+    return JSON.parse(localStorage.getItem(storageKey('history')) || '[]');
   });
 
   const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const [liteMode, setLiteMode] = useState<boolean>(() => localStorage.getItem(storageKey('liteMode')) === '1');
+  const trackGridClass = useMemo(() => liteMode ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4' : 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6', [liteMode]);
+
   const t = translations[lang];
 
   useEffect(() => {
-    localStorage.setItem('lang', lang);
+    localStorage.setItem(storageKey('lang'), lang);
   }, [lang]);
 
   useEffect(() => {
-    localStorage.setItem('likedSongs', JSON.stringify(likedSongs));
+    localStorage.setItem(storageKey('likedSongs'), JSON.stringify(likedSongs));
   }, [likedSongs]);
 
   useEffect(() => {
-    localStorage.setItem('history', JSON.stringify(history));
+    localStorage.setItem(storageKey('history'), JSON.stringify(history));
   }, [history]);
+
+  useEffect(() => {
+    localStorage.setItem(storageKey('liteMode'), liteMode ? '1' : '0');
+  }, [liteMode]);
 
   useEffect(() => {
     if (currentTrack && currentTrack.id) {
@@ -357,8 +381,7 @@ function AppContent() {
     setIsLoading(true);
     setActiveTab('search');
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
-      const data = await res.json();
+      const data = await fetchJsonSafe(`/api/search?q=${encodeURIComponent(searchQuery)}`);
       if (data.status) {
         setSearchResults(data.result);
       }
@@ -424,6 +447,7 @@ function AppContent() {
              </div>
              
              <div className="flex items-center gap-4 ml-4">
+                <button onClick={() => setLiteMode(v => !v)} className="text-xs px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20">{liteMode ? 'Lite On' : 'Lite Off'}</button>
                 <button 
                   onClick={() => setActiveTab('library')}
                   className="p-2 text-gray-400 hover:text-white transition md:hidden"
@@ -452,7 +476,7 @@ function AppContent() {
                       <p className="text-sm font-medium text-gray-500">The most played tracks this week</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6 md:gap-8">
+                  <div className={trackGridClass}>
                     {trending.length > 0 ? trending.slice(0, 12).map(track => (
                       <TrackCard 
                         key={track.id} 
@@ -504,7 +528,7 @@ function AppContent() {
                   <div className="flex items-center justify-between mb-8">
                     <h2 className="text-2xl md:text-3xl font-bold tracking-tight">{t.history}</h2>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
+                  <div className={trackGridClass}>
                     {history.length > 0 ? history.slice(0, 6).map(track => (
                       <TrackCard key={track.id} track={track} onPlay={(t) => playTrack(t, history)} onLike={() => toggleLike(track)} liked={isLiked(track.id)} active={currentTrack?.id === track.id} />
                     )) : (
@@ -516,9 +540,18 @@ function AppContent() {
                   </div>
                 </section>
 
+                
+                <section>
+                  <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-6">Music Platforms</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <a href="https://music.youtube.com" target="_blank" rel="noreferrer" className="p-5 rounded-2xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20">YouTube Music</a>
+                    <a href="https://open.spotify.com" target="_blank" rel="noreferrer" className="p-5 rounded-2xl bg-green-500/10 border border-green-500/20 hover:bg-green-500/20">Spotify</a>
+                  </div>
+                </section>
+
                 <section>
                   <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-6">Top Music Picks</h2>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
+                  <div className={trackGridClass}>
                     {likedSongs.length > 0 ? likedSongs.map(track => (
                       <TrackCard key={track.id} track={track} onPlay={playTrack} onLike={() => toggleLike(track)} liked={isLiked(track.id)} active={currentTrack?.id === track.id} />
                     )) : (
@@ -545,7 +578,7 @@ function AppContent() {
                   {isLoading && <div className="w-6 h-6 border-4 border-[#1DB954] border-t-transparent animate-spin rounded-full" />}
                 </div>
                 
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
+                <div className={trackGridClass}>
                   {searchResults.map(track => (
                     <TrackCard key={track.id} track={track} onPlay={(t) => playTrack(t, searchResults)} onLike={() => toggleLike(track)} liked={isLiked(track.id)} active={currentTrack?.id === track.id} />
                   ))}
