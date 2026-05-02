@@ -26,6 +26,12 @@ interface MusicContextType {
 
 
 
+
+function canUseLocalApi() {
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1';
+}
+
 async function fallbackCobalt(trackUrl: string): Promise<string | null> {
   try {
     const res = await fetch('https://api.cobalt.tools/api/json', {
@@ -116,18 +122,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // If no audioUrl and not offline, fetch from server extractor
       if (!finalUrl && track.url) {
         try {
-          const res = await fetch(`/api/play?url=${encodeURIComponent(track.url)}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.status && data.result?.audio) {
-              finalUrl = data.result.audio;
+          if (canUseLocalApi()) {
+            const res = await fetch(`/api/play?url=${encodeURIComponent(track.url)}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.status && data.result?.audio) {
+                finalUrl = data.result.audio;
+              }
             }
-          }
-          if (!finalUrl) {
-            const byQuery = await fetch(`/api/ytplay?q=${encodeURIComponent(`${track.title} ${track.artist}`)}`);
-            if (byQuery.ok) {
-              const qData = await byQuery.json();
-              finalUrl = qData?.result?.download?.audio || null;
+            if (!finalUrl) {
+              const byQuery = await fetch(`/api/ytplay?q=${encodeURIComponent(`${track.title} ${track.artist}`)}`);
+              if (byQuery.ok) {
+                const qData = await byQuery.json();
+                finalUrl = qData?.result?.download?.audio || null;
+              }
             }
           }
           if (!finalUrl) {
@@ -139,7 +147,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } catch (fetchErr: any) {
           console.error("Audio fetch error:", fetchErr);
           setIsPlaying(false);
-          alert(`Playback Error: ${fetchErr.message || "Failed to load audio"}`);
+          window.open(track.url, '_blank', 'noopener,noreferrer');
           return;
         }
       }
