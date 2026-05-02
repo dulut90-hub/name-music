@@ -250,6 +250,7 @@ const translations = {
 
 const STORAGE_PREFIX = 'name-music';
 const storageKey = (key: string) => `${STORAGE_PREFIX}:${key}`;
+const SEARCH_ENDPOINTS = ['/api/search', 'https://api-faa.my.id/faa/youtube'];
 
 async function fetchJsonSafe(url: string) {
   const res = await fetch(url);
@@ -262,6 +263,37 @@ async function fetchJsonSafe(url: string) {
   } catch {
     throw new Error('Invalid JSON response from server');
   }
+}
+
+
+function normalizeTrack(item: any): Track | null {
+  const url = item.url || item.link;
+  const id = item.id || (typeof url === 'string' ? (url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1] || url) : null);
+  if (!id || !url) return null;
+  return {
+    id,
+    title: item.title || 'Unknown Title',
+    artist: item.artist || item.channel || 'Unknown Artist',
+    thumbnail: item.thumbnail || item.imageUrl || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+    url,
+    duration: item.duration || '0:00',
+    audioUrl: item.audioUrl || undefined,
+  };
+}
+
+async function searchTracks(query: string): Promise<Track[]> {
+  for (const base of SEARCH_ENDPOINTS) {
+    try {
+      const glue = base.includes('?') ? '&' : '?';
+      const data = await fetchJsonSafe(`${base}${glue}q=${encodeURIComponent(query)}`);
+      if (!data?.status || !Array.isArray(data.result)) continue;
+      const normalized = data.result.map(normalizeTrack).filter(Boolean) as Track[];
+      if (normalized.length > 0) return normalized;
+    } catch (e) {
+      console.warn(`Search endpoint failed: ${base}`, e);
+    }
+  }
+  return [];
 }
 
 const languages = [
@@ -311,9 +343,9 @@ function AppContent() {
       const queries = ['trending music 2024', 'top hits global', 'popular songs 2025'];
       for (const query of queries) {
         try {
-          const data = await fetchJsonSafe(`/api/search?q=${encodeURIComponent(query)}`);
-          if (data.status && data.result.length > 0) {
-            setTrending(data.result);
+          const result = await searchTracks(query);
+          if (result.length > 0) {
+            setTrending(result);
             return;
           }
         } catch (e) {
@@ -381,10 +413,8 @@ function AppContent() {
     setIsLoading(true);
     setActiveTab('search');
     try {
-      const data = await fetchJsonSafe(`/api/search?q=${encodeURIComponent(searchQuery)}`);
-      if (data.status) {
-        setSearchResults(data.result);
-      }
+      const result = await searchTracks(searchQuery);
+      setSearchResults(result);
     } catch (error) {
       console.error(error);
     } finally {

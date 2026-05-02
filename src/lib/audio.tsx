@@ -29,16 +29,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState(() => {
-    return Number(localStorage.getItem('volume')) || 0.7;
+    return Number(localStorage.getItem('name-music:volume')) || 0.7;
   });
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [queue, setQueue] = useState<Track[]>([]);
   const [repeatMode, setRepeatMode] = useState<'none' | 'all' | 'one'>(() => {
-    return (localStorage.getItem('repeatMode') as any) || 'none';
+    return (localStorage.getItem('name-music:repeatMode') as any) || 'none';
   });
   const [isShuffle, setIsShuffle] = useState(() => {
-    return localStorage.getItem('isShuffle') === 'true';
+    return localStorage.getItem('name-music:isShuffle') === 'true';
   });
   
   const howlRef = useRef<Howl | null>(null);
@@ -89,7 +89,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // If no audioUrl and not offline, fetch from server extractor
       if (!finalUrl && track.url) {
         try {
-          const res = await fetch(`/api/play?url=${encodeURIComponent(track.url)}`);
+          let res = await fetch(`/api/play?url=${encodeURIComponent(track.url)}`);
+          if (!res.ok) {
+            res = await fetch(`https://api-faa.my.id/faa/youtube/play?url=${encodeURIComponent(track.url)}`);
+          }
           if (!res.ok) {
              const errData = await res.json().catch(() => ({}));
              throw new Error(errData.error || "Server extraction failed");
