@@ -44,6 +44,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const howlRef = useRef<Howl | null>(null);
   const progressInterval = useRef<number | null>(null);
   const playRequestIdRef = useRef(0);
+  const [playCounts, setPlayCounts] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem('name-music:playCounts') || '{}'); } catch { return {}; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('name-music:playCounts', JSON.stringify(playCounts));
+  }, [playCounts]);
 
   const cleanup = () => {
     if (howlRef.current) {
@@ -59,6 +66,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const requestId = ++playRequestIdRef.current;
     cleanup();
     setCurrentTrack(track);
+    setPlayCounts(prev => ({ ...prev, [track.id]: (prev[track.id] || 0) + 1 }));
     setIsPlaying(true);
     setProgress(0);
     setDuration(0);
@@ -105,18 +113,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         } catch (fetchErr: any) {
           console.error("Audio fetch error:", fetchErr);
-          // Auto-skip to next track if one fails
           setIsPlaying(false);
-          const currentIndex = resolvedQueue.findIndex(t => t.id === track.id);
-          if (currentIndex !== -1 && currentIndex < resolvedQueue.length - 1) {
-             console.log("Auto-skipping to next track due to error...");
-             setTimeout(() => {
-                const nextT = resolvedQueue[currentIndex + 1];
-                playTrack(nextT, resolvedQueue);
-             }, 500);
-          } else {
-             alert(`Playback Error: ${fetchErr.message || "Failed to load audio"}`);
-          }
+          alert(`Playback Error: ${fetchErr.message || "Failed to load audio"}`);
           return;
         }
       }
@@ -218,8 +216,19 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else if (repeatMode === 'all') {
       playTrack(queue[0]);
     } else {
-      setIsPlaying(false);
-      setCurrentTrack(null);
+      const ranked = [...queue]
+        .filter(t => !currentTrack || t.id !== currentTrack.id)
+        .sort((a, b) => (playCounts[b.id] || 0) - (playCounts[a.id] || 0));
+
+      const sameArtist = ranked.find(t => currentTrack && t.artist === currentTrack.artist);
+      const recommended = sameArtist || ranked[0];
+
+      if (recommended) {
+        playTrack(recommended, queue);
+      } else {
+        setIsPlaying(false);
+        setCurrentTrack(null);
+      }
     }
   };
 
@@ -260,13 +269,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const toggleShuffle = () => setIsShuffle(prev => {
     const newVal = !prev;
-    localStorage.setItem('isShuffle', String(newVal));
+    localStorage.setItem('name-music:isShuffle', String(newVal));
     return newVal;
   });
 
   const handleSetRepeatMode = (mode: 'none' | 'all' | 'one') => {
     setRepeatMode(mode);
-    localStorage.setItem('repeatMode', mode);
+    localStorage.setItem('name-music:repeatMode', mode);
   };
 
   useEffect(() => {
