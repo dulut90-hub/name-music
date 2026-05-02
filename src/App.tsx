@@ -57,7 +57,7 @@ export default function App() {
     try {
       const response = await fetchJsonSafe("/api/ytplay", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: video.url }) });
       const data = response.data;
-      if (data.status && data.result) {
+      if (data?.status && data.result) {
         const updatedVideo = { ...video, download: data.result.download, duration: data.result.duration || video.duration };
         setSelectedVideo(updatedVideo); if (currentTrack?.url === video.url) setCurrentTrack(updatedVideo);
       }
