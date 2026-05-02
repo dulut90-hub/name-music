@@ -43,6 +43,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   
   const howlRef = useRef<Howl | null>(null);
   const progressInterval = useRef<number | null>(null);
+  const playRequestIdRef = useRef(0);
 
   const cleanup = () => {
     if (howlRef.current) {
@@ -55,6 +56,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const playTrack = async (track: Track, tracks?: Track[]) => {
+    const requestId = ++playRequestIdRef.current;
     cleanup();
     setCurrentTrack(track);
     setIsPlaying(true);
@@ -120,6 +122,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         throw new Error("No usable audio URL found");
       }
 
+      if (requestId !== playRequestIdRef.current) {
+        return;
+      }
+
       const sound = new Howl({
         src: [finalUrl],
         html5: true,
@@ -148,6 +154,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           sound.once('unlock', () => sound.play());
         }
       });
+
+      if (requestId !== playRequestIdRef.current) {
+        sound.unload();
+        return;
+      }
 
       howlRef.current = sound;
       sound.play();
