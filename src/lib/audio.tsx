@@ -25,6 +25,23 @@ interface MusicContextType {
 
 
 
+
+async function fallbackCobalt(trackUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://api.cobalt.tools/api/json', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ url: trackUrl, downloadMode: 'audio', audioFormat: 'mp3' })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data?.url) return data.url;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 const MusicContext = createContext<MusicContextType | undefined>(undefined);
 
 export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -100,15 +117,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!finalUrl && track.url) {
         try {
           const res = await fetch(`/api/play?url=${encodeURIComponent(track.url)}`);
-          if (!res.ok) {
-             const errData = await res.json().catch(() => ({}));
-             throw new Error(errData.error || "Server extraction failed");
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status && data.result?.audio) {
+              finalUrl = data.result.audio;
+            }
           }
-          const data = await res.json();
-          if (data.status && data.result?.audio) {
-            finalUrl = data.result.audio;
-          } else {
-             throw new Error(data.error || "Extractor failed to provide stream");
+          if (!finalUrl) {
+            finalUrl = await fallbackCobalt(track.url);
+          }
+          if (!finalUrl) {
+            throw new Error('Server extraction failed');
           }
         } catch (fetchErr: any) {
           console.error("Audio fetch error:", fetchErr);
