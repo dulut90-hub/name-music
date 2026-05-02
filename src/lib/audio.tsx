@@ -24,34 +24,6 @@ interface MusicContextType {
 }
 
 
-function extractVideoId(url: string): string | null {
-  return url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1] || null;
-}
-
-async function resolveAudioUrl(trackUrl: string): Promise<string | null> {
-  const videoId = extractVideoId(trackUrl);
-  const endpoints = [
-    `https://pipedapi.kavin.rocks/streams/${videoId}`,
-    `https://pipedapi.recloudstream.com/streams/${videoId}`,
-    `https://pipedapi.darkness.services/streams/${videoId}`,
-    `https://api-faa.my.id/faa/youtube/play?url=${encodeURIComponent(trackUrl)}`
-  ].filter(Boolean) as string[];
-
-  for (const endpoint of endpoints) {
-    try {
-      const res = await fetch(endpoint);
-      if (!res.ok) continue;
-      const data = await res.json();
-      const audio = data?.result?.audio
-        || data?.audio
-        || data?.audioUrl
-        || data?.audioStreams?.[0]?.url
-        || data?.adaptiveFormats?.find((f: any) => f?.mimeType?.includes('audio'))?.url;
-      if (audio) return audio;
-    } catch {}
-  }
-  return null;
-}
 
 const MusicContext = createContext<MusicContextType | undefined>(undefined);
 
@@ -127,9 +99,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // If no audioUrl and not offline, fetch from server extractor
       if (!finalUrl && track.url) {
         try {
-          finalUrl = await resolveAudioUrl(track.url);
-          if (!finalUrl) {
-             throw new Error("Server extraction failed");
+          const res = await fetch(`/api/play?url=${encodeURIComponent(track.url)}`);
+          if (!res.ok) {
+             const errData = await res.json().catch(() => ({}));
+             throw new Error(errData.error || "Server extraction failed");
+          }
+          const data = await res.json();
+          if (data.status && data.result?.audio) {
+            finalUrl = data.result.audio;
+          } else {
+             throw new Error(data.error || "Extractor failed to provide stream");
           }
         } catch (fetchErr: any) {
           console.error("Audio fetch error:", fetchErr);
