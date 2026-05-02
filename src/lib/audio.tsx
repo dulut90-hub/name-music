@@ -31,6 +31,33 @@ interface MusicContextType {
 const API_BASE = (import.meta as any).env?.VITE_API_BASE?.replace(/\/$/, '') || '';
 const apiUrl = (path: string) => `${API_BASE}${path}`;
 
+
+function playBackgroundVideo(trackUrl: string) {
+  const videoId = trackUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
+  if (!videoId) return;
+
+  const existing = document.getElementById('name-music-bg-video');
+  if (existing) existing.remove();
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'name-music-bg-video';
+  wrapper.style.position = 'fixed';
+  wrapper.style.inset = '0';
+  wrapper.style.zIndex = '0';
+  wrapper.style.opacity = '0.12';
+  wrapper.style.pointerEvents = 'none';
+
+  const iframe = document.createElement('iframe');
+  iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&controls=0&loop=1&playlist=${videoId}`;
+  iframe.allow = 'autoplay; encrypted-media';
+  iframe.style.width = '100%';
+  iframe.style.height = '100%';
+  iframe.style.border = '0';
+
+  wrapper.appendChild(iframe);
+  document.body.appendChild(wrapper);
+}
+
 const MusicContext = createContext<MusicContextType | undefined>(undefined);
 
 export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -128,6 +155,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } catch (fetchErr: any) {
           console.error("Audio fetch error:", fetchErr);
           setIsPlaying(false);
+          playBackgroundVideo(track.url);
           return;
         }
       }
