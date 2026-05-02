@@ -27,58 +27,9 @@ interface MusicContextType {
 
 
 
-function canUseLocalApi() {
-  const host = window.location.hostname;
-  return host === 'localhost' || host === '127.0.0.1';
-}
 
-function playWithYouTubeEmbed(trackUrl: string) {
-  const videoId = trackUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
-  if (!videoId) return;
-
-  const existing = document.getElementById('name-music-yt-fallback');
-  if (existing) existing.remove();
-
-  const wrapper = document.createElement('div');
-  wrapper.id = 'name-music-yt-fallback';
-  wrapper.style.position = 'fixed';
-  wrapper.style.right = '12px';
-  wrapper.style.bottom = '12px';
-  wrapper.style.width = '320px';
-  wrapper.style.maxWidth = '92vw';
-  wrapper.style.height = '180px';
-  wrapper.style.zIndex = '9999';
-  wrapper.style.borderRadius = '12px';
-  wrapper.style.overflow = 'hidden';
-  wrapper.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)';
-  wrapper.style.background = '#000';
-
-  const iframe = document.createElement('iframe');
-  iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1`;
-  iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
-  iframe.allowFullscreen = true;
-  iframe.style.width = '100%';
-  iframe.style.height = '100%';
-  iframe.style.border = '0';
-
-  const closeBtn = document.createElement('button');
-  closeBtn.textContent = '✕';
-  closeBtn.style.position = 'absolute';
-  closeBtn.style.top = '6px';
-  closeBtn.style.right = '6px';
-  closeBtn.style.background = 'rgba(0,0,0,0.65)';
-  closeBtn.style.color = '#fff';
-  closeBtn.style.border = '0';
-  closeBtn.style.borderRadius = '999px';
-  closeBtn.style.width = '28px';
-  closeBtn.style.height = '28px';
-  closeBtn.style.cursor = 'pointer';
-  closeBtn.onclick = () => wrapper.remove();
-
-  wrapper.appendChild(iframe);
-  wrapper.appendChild(closeBtn);
-  document.body.appendChild(wrapper);
-}
+const API_BASE = (import.meta as any).env?.VITE_API_BASE?.replace(/\/$/, '') || '';
+const apiUrl = (path: string) => `${API_BASE}${path}`;
 
 const MusicContext = createContext<MusicContextType | undefined>(undefined);
 
@@ -154,29 +105,28 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // If no audioUrl and not offline, fetch from server extractor
       if (!finalUrl && track.url) {
         try {
-          if (canUseLocalApi()) {
-            const res = await fetch(`/api/play?url=${encodeURIComponent(track.url)}`);
+          const query = `${track.title} ${track.artist}`.trim();
+          const byQuery = await fetch(apiUrl(`/api/ytplay?q=${encodeURIComponent(query)}`));
+          if (byQuery.ok) {
+            const qData = await byQuery.json();
+            finalUrl = qData?.result?.download?.audio || null;
+          }
+
+          if (!finalUrl) {
+            const res = await fetch(apiUrl(`/api/play?url=${encodeURIComponent(track.url)}`));
             if (res.ok) {
               const data = await res.json();
               if (data.status && data.result?.audio) {
                 finalUrl = data.result.audio;
               }
             }
-            if (!finalUrl) {
-              const byQuery = await fetch(`/api/ytplay?q=${encodeURIComponent(`${track.title} ${track.artist}`)}`);
-              if (byQuery.ok) {
-                const qData = await byQuery.json();
-                finalUrl = qData?.result?.download?.audio || null;
-              }
-            }
           }
+
           if (!finalUrl) {
             throw new Error('Server extraction failed');
           }
         } catch (fetchErr: any) {
           console.error("Audio fetch error:", fetchErr);
-          setIsPlaying(false);
-          playWithYouTubeEmbed(track.url);
           setIsPlaying(false);
           return;
         }

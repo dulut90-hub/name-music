@@ -15,3 +15,7 @@ This contains everything you need to run your app locally.
    `npm install`
 2. Run the app:
    `npm run dev`
+
+
+### Static deploy note
+If frontend is deployed without Node server routes, set `VITE_API_BASE` to your backend URL so `/api/play` and `/api/ytplay` work.
