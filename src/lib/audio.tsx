@@ -124,6 +124,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
           }
           if (!finalUrl) {
+            const byQuery = await fetch(`/api/ytplay?q=${encodeURIComponent(`${track.title} ${track.artist}`)}`);
+            if (byQuery.ok) {
+              const qData = await byQuery.json();
+              finalUrl = qData?.result?.download?.audio || null;
+            }
+          }
+          if (!finalUrl) {
             finalUrl = await fallbackCobalt(track.url);
           }
           if (!finalUrl) {

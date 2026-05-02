@@ -230,6 +230,58 @@ async function ytdlRapid(url: string) {
   }
 }
 
+
+async function searchFirstVideo(query: string) {
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  const { data: html } = await axiosClient.get(url);
+  const data = extractJson(html, "ytInitialData");
+  if (!data) throw new Error("ytInitialData not found");
+
+  const sections = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+  let video: any = null;
+
+  for (const section of sections) {
+    const items = section?.itemSectionRenderer?.contents || [];
+    video = items.find((x: any) => x.videoRenderer)?.videoRenderer;
+    if (video) break;
+  }
+
+  if (!video) throw new Error("No video found");
+
+  return {
+    videoId: video.videoId,
+    title: safeText(video.title),
+    channel: safeText(video.ownerText) || safeText(video.longBylineText),
+    views: safeText(video.viewCountText) || safeText(video.shortViewCountText),
+    thumbnail: video.thumbnail?.thumbnails?.at(-1)?.url || `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`
+  };
+}
+
+app.get('/api/ytplay', async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ status: false, error: 'Query required' });
+  try {
+    const meta = await searchFirstVideo(q as string);
+    const watchUrl = `https://www.youtube.com/watch?v=${meta.videoId}`;
+    const saveAudio = await getDownloadSavetube(watchUrl);
+    const rapid = await ytdlRapid(watchUrl);
+    const audio = saveAudio || rapid || null;
+
+    return res.json({
+      status: true,
+      result: {
+        title: meta.title,
+        channel: meta.channel,
+        views: meta.views,
+        thumbnail: meta.thumbnail,
+        url: watchUrl,
+        download: { audio }
+      }
+    });
+  } catch (e: any) {
+    return res.status(500).json({ status: false, error: e.message || 'ytplay failed' });
+  }
+});
 app.get("/api/play", async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "URL required" });
