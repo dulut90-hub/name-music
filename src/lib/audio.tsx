@@ -32,20 +32,52 @@ function canUseLocalApi() {
   return host === 'localhost' || host === '127.0.0.1';
 }
 
-async function fallbackCobalt(trackUrl: string): Promise<string | null> {
-  try {
-    const res = await fetch('https://api.cobalt.tools/api/json', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ url: trackUrl, downloadMode: 'audio', audioFormat: 'mp3' })
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data?.url) return data.url;
-    return null;
-  } catch {
-    return null;
-  }
+function playWithYouTubeEmbed(trackUrl: string) {
+  const videoId = trackUrl.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
+  if (!videoId) return;
+
+  const existing = document.getElementById('name-music-yt-fallback');
+  if (existing) existing.remove();
+
+  const wrapper = document.createElement('div');
+  wrapper.id = 'name-music-yt-fallback';
+  wrapper.style.position = 'fixed';
+  wrapper.style.right = '12px';
+  wrapper.style.bottom = '12px';
+  wrapper.style.width = '320px';
+  wrapper.style.maxWidth = '92vw';
+  wrapper.style.height = '180px';
+  wrapper.style.zIndex = '9999';
+  wrapper.style.borderRadius = '12px';
+  wrapper.style.overflow = 'hidden';
+  wrapper.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)';
+  wrapper.style.background = '#000';
+
+  const iframe = document.createElement('iframe');
+  iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1`;
+  iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
+  iframe.allowFullscreen = true;
+  iframe.style.width = '100%';
+  iframe.style.height = '100%';
+  iframe.style.border = '0';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '✕';
+  closeBtn.style.position = 'absolute';
+  closeBtn.style.top = '6px';
+  closeBtn.style.right = '6px';
+  closeBtn.style.background = 'rgba(0,0,0,0.65)';
+  closeBtn.style.color = '#fff';
+  closeBtn.style.border = '0';
+  closeBtn.style.borderRadius = '999px';
+  closeBtn.style.width = '28px';
+  closeBtn.style.height = '28px';
+  closeBtn.style.cursor = 'pointer';
+  closeBtn.onclick = () => wrapper.remove();
+
+  wrapper.appendChild(iframe);
+  wrapper.appendChild(closeBtn);
+  document.body.appendChild(wrapper);
 }
 
 const MusicContext = createContext<MusicContextType | undefined>(undefined);
@@ -139,15 +171,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
           }
           if (!finalUrl) {
-            finalUrl = await fallbackCobalt(track.url);
-          }
-          if (!finalUrl) {
             throw new Error('Server extraction failed');
           }
         } catch (fetchErr: any) {
           console.error("Audio fetch error:", fetchErr);
           setIsPlaying(false);
-          window.open(track.url, '_blank', 'noopener,noreferrer');
+          playWithYouTubeEmbed(track.url);
+          setIsPlaying(false);
           return;
         }
       }
